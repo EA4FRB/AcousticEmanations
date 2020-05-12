@@ -9,6 +9,8 @@ The tool has the capability to capture the training data.
 
 Development was based on [Udacity 2018 Machine Learning Nanodegree Capstone project](https://github.com/mikesmales/Udacity-ML-Capstone)
 
+![Screenshot](pic/screenshot.jpg)
+
 ## License
 Copyright (c) 2020, Melchor Varela - EA4FRB
 
