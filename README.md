@@ -1,11 +1,10 @@
 # Acoustic Emanations Tool
-Acoustic emanations tool
+Experimental application for the analysis of keyboard acoustic emanations.
 
 ## About
-Experimental application for the analysis of keyboard acoustic emanations. 
-Mechanical keypads are vulnerable to attacks based on differentiating the sound emanated by different keys. 
-This application uses a neural network to calculate a confusion matrix based on training data previously captured.
-The tool has the capability to capture the training data.
+Mechanical keypads are vulnerable to attacks based on differentiating the sound emanated by different keys.
+This application uses a neural network to calculate a confusion matrix based on training data of key presses previously recorded.
+The tool includes a recording function to capture the training data.
 
 Development was based on [Udacity 2018 Machine Learning Nanodegree Capstone project](https://github.com/mikesmales/Udacity-ML-Capstone)
 
