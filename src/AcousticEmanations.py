@@ -1,47 +1,76 @@
+# ---------------------------------------------------------
+"""
+  This file is a part of the "Acoustic Emanations Tool" software
+
+  MIT License
+
+  @author Copyright (c) 2020 Melchor Varela - EA4FRB
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+"""
+# ---------------------------------------------------------
+
+import itertools
+import os
+import shutil
 import sys
-
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QVBoxLayout, QSizePolicy, QMessageBox, QWidget, \
-    QPushButton, QFileDialog
-from PyQt5.QtGui import QIcon
-
-from PyQt5.QtCore import QSize, QCoreApplication, QSettings
-
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
+import wave
+from datetime import datetime
+from time import sleep
 
 import librosa
 import librosa.display
-
-import sounddevice as sd
-from scipy.io.wavfile import write
-import pandas as pd
-import os
-import pyaudio
-import wave
-from time import sleep
-from MainWindow import Ui_MainWindow
-
-import shutil
-
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import pyaudio
+import sounddevice as sd
+from MainWindow import Ui_MainWindow
+from PyQt5.QtCore import QSize, QCoreApplication, QSettings
+from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QVBoxLayout, QSizePolicy, QMessageBox, QWidget, \
+    QPushButton, QFileDialog
+from keras.callbacks import ModelCheckpoint
+from keras.layers import Convolution2D, MaxPooling2D, Dense, Dropout, Activation, Flatten
+from keras.models import Sequential, load_model
+from keras.optimizers import Adam
+from keras.utils import np_utils, to_categorical
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from scipy.io.wavfile import write
+from sklearn import metrics
+from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, scale
+from commondefs import *
 
-ORGANIZATION_NAME = 'Melchor Varela - EA4FRB'
-ORGANIZATION_DOMAIN = 'sark110.com'
-APPLICATION_NAME = 'Acoustic Emanations Tool'
-COPYRIGHT_DATE = "© 2020,"
 
 class MainWindow(QMainWindow, Ui_MainWindow):
-    _trim_threshold = 15
-
-    _key_name = 'key0'
+    _key_name = DEF_KEY_NAME
     _key_idx = 0
 
-    _path_train = "../train"
-    _path_models = "./saved_models/"
-    _metadata_name = "train_data.csv"
+    _path_train = PATH_TRAIN_DEF
+    _metadata_name = METADATA_FILENAME
 
     _train_data = []
+
+    _model = []
 
     def __init__(self):
         super(MainWindow, self).__init__()
@@ -52,35 +81,39 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.progressBarRecord.setValue(0)
         self.progressBarCompute.setValue(0)
 
-        self.pushButtonRec.pressed.connect(self.button_record_slot)
-        self.pushButtonLoad.pressed.connect(self.button_load_slot)
+        self.pushButtonRec.pressed.connect(self.button_record_action)
 
-        self.lineEditKeyVal.editingFinished.connect(self.edit_key_val_slot)
+        self.pushButtonTest.pressed.connect(self.button_test_action)
+
+        self.lineEditKeyVal.editingFinished.connect(self.edit_key_val_action)
         self.lineEditKeyVal.setText(self._key_name)
 
         self.spinBoxRecNb.setValue(self._key_idx)
-        self.spinBoxRecNb.valueChanged.connect(self.spinbox_rec_nb_slot)
+        self.spinBoxRecNb.valueChanged.connect(self.spinbox_rec_nb_action)
 
-        self.pushButtonModel.pressed.connect(self.button_model_slot)
+        self.pushButtonModel.pressed.connect(self.model_process_action)
 
         self.labelFileName.setText(self._key_name + '-' + str(self._key_idx) + '.wav')
 
         self.actionAbout.triggered.connect(self.about)
-        self.actionFolderSelect.triggered.connect(self.folder_select)
+        self.actionFolderSelect.triggered.connect(self.folder_select_action)
+        self.actionLoadWaveFile.triggered.connect(self.load_wave_file_action)
 
-        os.makedirs(self._path_train + '/wav/', exist_ok=True)
-        os.makedirs(self._path_train + '/metadata/', exist_ok=True)
-        os.makedirs(self._path_models, exist_ok=True)
+        self.clear_model_indicators()
+
+        os.makedirs(self._path_train + SUBPATH_WAV, exist_ok=True)
+        os.makedirs(self._path_train + SUBPATH_META, exist_ok=True)
+        os.makedirs(self._path_train + SUBPATH_MODELS, exist_ok=True)
 
         try:
-            self._train_data = pd.read_csv(self._path_train + '/metadata/' + self._metadata_name)
-        except:
+            self._train_data = pd.read_csv(self._path_train + SUBPATH_META + self._metadata_name)
+        except Exception as e:
             self._train_data = []
 
         self.statusBar().showMessage(self._path_train)
         self.show()
 
-    def button_model_slot(self):
+    def model_process_action(self):
         self.clear_model_indicators()
 
         self.progressBarCompute.setValue(10)
@@ -89,110 +122,95 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.about(self, "Error", "No training data")
             return
 
-        self.labelFeatures.setText('File:' + self._path_train + '/metadata/' + self._metadata_name + ', length: ' + str(len(featuresdf)))
+        featuresdf.to_csv(self._path_train + SUBPATH_MODELS + FEATURES_FILENAME, index=False)
 
-        from sklearn.preprocessing import LabelEncoder
-        from keras.utils import to_categorical
-
-        import numpy as np
+        self.labelFeatures.setText(
+            'File:' + self._path_train + SUBPATH_META + self._metadata_name + ', length: ' + str(len(featuresdf)))
 
         # Convert features and corresponding classification labels into numpy arrays
         X = np.array(featuresdf.feature.tolist())
         y = np.array(featuresdf.class_label.tolist())
 
         # Encode the classification labels
-        le = LabelEncoder()
-        yy = to_categorical(le.fit_transform(y))
+        self._le = LabelEncoder()
+        self._yy = to_categorical(self._le.fit_transform(y))
 
         # split the dataset
-        from sklearn.model_selection import train_test_split
+        self._x_train, self._x_test, self._y_train, self._y_test = train_test_split(X, self._yy, test_size=0.2,
+                                                                                    random_state=42)
 
-        x_train, x_test, y_train, y_test = train_test_split(X, yy, test_size=0.2, random_state=42)
-
-        import numpy as np
-        from keras.models import Sequential
-        from keras.layers import Dense, Dropout, Activation, Flatten
-        from keras.layers import Convolution2D, MaxPooling2D
-        from keras.optimizers import Adam
-        from keras.utils import np_utils
-        from sklearn import metrics
-
-        num_labels = yy.shape[1]
+        num_labels = self._yy.shape[1]
         filter_size = 2
 
         # Construct model
-        model = Sequential()
+        self._model = Sequential()
 
-        model.add(Dense(256, input_shape=(40,)))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.5))
+        self._model.add(Dense(256, input_shape=(40,)))
+        self._model.add(Activation('relu'))
+        self._model.add(Dropout(0.5))
 
-        model.add(Dense(256))
-        model.add(Activation('relu'))
-        model.add(Dropout(0.5))
+        self._model.add(Dense(256))
+        self._model.add(Activation('relu'))
+        self._model.add(Dropout(0.5))
 
-        model.add(Dense(num_labels))
-        model.add(Activation('softmax'))
+        self._model.add(Dense(num_labels))
+        self._model.add(Activation('softmax'))
 
         # Compile the model
-        model.compile(loss='categorical_crossentropy', metrics=['accuracy'], optimizer='adam')
+        self._model.compile(loss='categorical_crossentropy', metrics=['accuracy'], optimizer='adam')
 
         # Display model architecture summary
-        model.summary()
+        self._model.summary()
 
         # Calculate pre-training accuracy
-        score = model.evaluate(x_test, y_test, verbose=0)
+        score = self._model.evaluate(self._x_test, self._y_test, verbose=0)
         accuracy = 100 * score[1]
 
         print("Pre-training accuracy: %.4f%%" % accuracy)
         self.labelPreTrainAccuracy.setText("Pre-training accuracy: %.4f%%" % accuracy)
-
-        from keras.callbacks import ModelCheckpoint
-        from datetime import datetime
 
         self.progressBarCompute.setValue(30)
 
         num_epochs = 100
         num_batch_size = 32
 
-        checkpointer = ModelCheckpoint(filepath=self._path_models + 'weights.best.basic_mlp.hdf5',
+        checkpointer = ModelCheckpoint(filepath=self._path_train + SUBPATH_MODELS + CHECKPOINT_FILENAME,
                                        verbose=1, save_best_only=True)
         start = datetime.now()
 
         self.progressBarCompute.setValue(40)
 
-        model.fit(x_train, y_train, batch_size=num_batch_size, epochs=num_epochs, validation_data=(x_test, y_test),
-                  callbacks=[checkpointer], verbose=1)
+        self._model.fit(self._x_train, self._y_train, batch_size=num_batch_size, epochs=num_epochs,
+                        validation_data=(self._x_test, self._y_test),
+                        callbacks=[checkpointer], verbose=1)
 
         duration = datetime.now() - start
         print("Training completed in time: ", duration)
 
         # Evaluating the model on the training and testing set
-        score = model.evaluate(x_train, y_train, verbose=0)
+        score = self._model.evaluate(self._x_train, self._y_train, verbose=0)
         print("Training Accuracy: ", score[1])
         self.labelTrainAccuracy.setText("Training Accuracy: " + str(score[1]))
 
-        score = model.evaluate(x_test, y_test, verbose=0)
+        score = self._model.evaluate(self._x_test, self._y_test, verbose=0)
         print("Testing Accuracy: ", score[1])
         self.labelTestAccuracy.setText("Testing Accuracy: " + str(score[1]))
 
-        from sklearn.metrics import confusion_matrix
-
-        snn_pred = model.predict(x_test, batch_size=32, verbose=0)
+        snn_pred = self._model.predict(self._x_test, batch_size=32, verbose=0)
         snn_predicted = np.argmax(snn_pred, axis=1)
-        snn_cm = confusion_matrix(np.argmax(y_test, axis=1), snn_predicted)
+        snn_cm = confusion_matrix(np.argmax(self._y_test, axis=1), snn_predicted)
 
         self.progressBarCompute.setValue(80)
 
         self.plot_confusion_matrix(snn_cm, normalize=True, target_names=self._metadata.class_name.unique(),
                                    title="Confusion Matrix")
         self.progressBarCompute.setValue(100)
-        
+
     def extract_features(self, file_name):
         try:
             audio, sample_rate = librosa.load(file_name, res_type='kaiser_fast')
             audio_n = librosa.util.normalize(audio)
-            audio_trim, index = librosa.effects.trim(audio_n, top_db=self._trim_threshold)
+            audio_trim, index = librosa.effects.trim(audio_n, top_db=AUD_TRIM_THRESHOLD)
             mfccs = librosa.feature.mfcc(y=audio_trim, sr=sample_rate, n_mfcc=40)
             mfccsscaled = np.mean(mfccs.T, axis=0)
 
@@ -204,18 +222,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def compile_features(self):
         try:
-            self._metadata = pd.read_csv(self._path_train + '/metadata/' + self._metadata_name)
+            self._metadata = pd.read_csv(self._path_train + SUBPATH_META + self._metadata_name)
             features = []
             # Iterate through each sound file and extract the features
             for index, row in self._metadata.iterrows():
-                file_name = os.path.join(self._path_train + '/wav/' + str(row["slice_file_name"]))
+                file_name = os.path.join(self._path_train + SUBPATH_WAV + str(row["slice_file_name"]))
                 class_label = row["class_name"]
                 data = self.extract_features(file_name)
                 features.append([data, class_label])
 
             # Convert into a Panda dataframe
             return pd.DataFrame(features, columns=['feature', 'class_label'])
-        except:
+        except Exception as e:
             return []
 
     def plot_confusion_matrix(self, cm,
@@ -255,10 +273,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         http://scikit-learn.org/stable/auto_examples/model_selection/plot_confusion_matrix.html
 
         """
-        import matplotlib.pyplot as plt
-        import numpy as np
-        import itertools
-
         accuracy = np.trace(cm) / float(np.sum(cm))
         misclass = 1 - accuracy
 
@@ -298,14 +312,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             'Predicted label\naccuracy={:0.2f}; misclass={:0.2f}'.format(accuracy, misclass))
         self.MplWidgetMatrix.canvas.draw()
 
-    def edit_key_val_slot(self):
+    def edit_key_val_action(self):
         self._key_name = self.lineEditKeyVal.text()
         self._key_idx = 0
         self.labelFileName.setText(self._key_name + '-' + str(self._key_idx) + '.wav')
         self.spinBoxRecNb.setValue(self._key_idx)
         self.save_settings()
 
-    def spinbox_rec_nb_slot(self, value):
+    def spinbox_rec_nb_action(self, value):
         self._key_idx = value
         self.labelFileName.setText(self._key_name + '-' + str(self._key_idx) + '.wav')
         self.save_settings()
@@ -314,6 +328,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.labelTrainAccuracy.setText('')
         self.labelTestAccuracy.setText('')
         self.labelPreTrainAccuracy.setText('')
+        self.labelFeatures.setText('')
 
     def console_output(self, msg):
         # Fetch text already in QTextBrowser
@@ -328,41 +343,53 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Repaint to force event loop to render at each call
         self.textBrowserConsole.repaint()
 
-    def button_record_slot(self):
-        filename = self._key_name + '-' + str(self._key_idx) + '.wav'
+    def button_record_action(self):
+        file_name = self._key_name + '-' + str(self._key_idx) + '.wav'
         tmpfile = "temp.wav"
         self.rec_file(tmpfile)
-        self._train_data.append([filename, self._key_name])
-        shutil.copyfile(tmpfile, self._path_train + '/wav/' + filename)
+        self._train_data.append([file_name, self._key_name])
+        shutil.copyfile(tmpfile, self._path_train + SUBPATH_WAV + file_name)
         os.remove(tmpfile)
-        self.plot_record(filename, self._path_train + '/wav/' + filename)
+        self.plot_record(file_name, self._path_train + SUBPATH_WAV + file_name)
 
         self._key_idx = self._key_idx + 1
         self.spinBoxRecNb.setValue(self._key_idx)
         self.labelFileName.setText(self._key_name + '-' + str(self._key_idx) + '.wav')
 
         df = pd.DataFrame(self._train_data, columns=['slice_file_name', 'class_name'])
-        df.to_csv(self._path_train + '/metadata/' + self._metadata_name, index=False)
+        df.to_csv(self._path_train + SUBPATH_META + self._metadata_name, index=False)
 
         self.save_settings()
 
-    def button_load_slot(self):
+    def load_wave_file_action(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        filename, _ = QFileDialog.getOpenFileName(self, "Open wav file", self._path_train + '/wav/',
-                                                  "All Files (*);;Wave Files (*.wav)", options=options)
-        if filename:
-            self.plot_record(os.path.basename(filename), filename)
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open wav file", self._path_train + SUBPATH_WAV,
+                                                   "All Files (*);;Wave Files (*.wav)", options=options)
+        if file_name:
+            self.plot_record(os.path.basename(file_name), file_name)
+        self.statusBar().showMessage(self._path_train)
 
-    def plot_record(self, name, filename):
-        audio, sample_rate = librosa.load(filename)
+    def plot_record(self, name, file_name):
+        audio, sample_rate = librosa.load(file_name, res_type='kaiser_fast')
         audio_n = librosa.util.normalize(audio)
+        audio_trim, index = librosa.effects.trim(audio_n, top_db=AUD_TRIM_THRESHOLD)
+
         self.MplWidget.canvas.axes.clear()
-        self.MplWidget.canvas.axes.plot(audio_n)
         self.MplWidget.canvas.axes.set_title(name)
+        librosa.display.waveplot(audio_trim, sr=sample_rate, ax=self.MplWidget.canvas.axes)
         self.MplWidget.canvas.draw()
 
-    def rec_file(self, filename):
+        mfcc = librosa.feature.mfcc(y=audio_trim, sr=sample_rate, n_mfcc=40)
+        mfccs = scale(mfcc, axis=0)
+        self.MplWidgetSpectrum.canvas.axes.clear()
+        self.MplWidgetSpectrum.canvas.axes.set_title(name)
+        # librosa.display.specshow(mfcc, sr=sample_rate, x_axis='time', y_axis='mel', ax=self.MplWidgetSpectrum.canvas.axes)
+        librosa.display.specshow(mfccs, sr=sample_rate, x_axis='time', y_axis='mel',
+                                 ax=self.MplWidgetSpectrum.canvas.axes)
+        self.MplWidgetSpectrum.canvas.draw()
+
+    def rec_file(self, file_name):
         sleep(0.5)
         chunk = 1024  # Record in chunks of 1024 samples
         sample_format = pyaudio.paInt24
@@ -392,23 +419,51 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Terminate the PortAudio interface
         p.terminate()
         # Save the recorded data as a WAV file
-        wf = wave.open(filename, 'wb')
+        wf = wave.open(file_name, 'wb')
         wf.setnchannels(channels)
         wf.setsampwidth(p.get_sample_size(sample_format))
         wf.setframerate(fs)
         wf.writeframes(b''.join(frames))
         wf.close()
 
-    def folder_select(self):
+    def folder_select_action(self):
         folder = str(QFileDialog.getExistingDirectory(self, "Select Directory", self._path_train))
         if folder:
             self._path_train = folder
             self.save_settings()
             try:
-                self._train_data = pd.read_csv(self._path_train + '/metadata/' + self._metadata_name)
-            except:
+                self._train_data = pd.read_csv(self._path_train + SUBPATH_META + self._metadata_name)
+            except Exception as e:
                 self._train_data = []
         self.statusBar().showMessage(self._path_train)
+
+    def button_test_action(self):
+        if not self._model:
+            QMessageBox.about(self, "Error", "Run model first")
+            return
+
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open wav file", self._path_train + SUBPATH_WAV,
+                                                   "All Files (*);;Wave Files (*.wav)", options=options)
+        if file_name:
+            self.plot_record(os.path.basename(file_name), file_name)
+
+            prediction_feature = self.extract_features(file_name)
+            if prediction_feature is None:
+                QMessageBox.about(self, "Error", "Parsing file: " + file_name)
+                return
+            predicted_vector = self._model.predict_classes(np.array([prediction_feature]))
+            predicted_class = self._le.inverse_transform(predicted_vector)
+            outstr = "File: " + os.path.basename(file_name) + '\n'
+            outstr += "The predicted class is: " + str(predicted_class[0]) + '\n\n';
+
+            predicted_proba_vector = self._model.predict_proba(np.array([prediction_feature]))
+            predicted_proba = predicted_proba_vector[0]
+            for i in range(len(predicted_proba)):
+                category = self._le.inverse_transform(np.array([i]))
+                outstr += str(category[0]) + ":\t" + format(predicted_proba[i], '.32f') + '\n'
+            QMessageBox.about(self, "Prediction", outstr)
 
     def about(self):
         QMessageBox.about(self, "About", APPLICATION_NAME + '\n\n' + COPYRIGHT_DATE + ' ' + ORGANIZATION_NAME)
@@ -425,6 +480,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         settings.setValue('settings/key_name', self._key_name)
         settings.setValue('settings/key_index', self._key_idx)
         settings.sync()
+
 
 if __name__ == '__main__':
     QCoreApplication.setApplicationName(ORGANIZATION_NAME)
