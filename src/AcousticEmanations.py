@@ -40,21 +40,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pyaudio
-import sounddevice as sd
 from MainWindow import Ui_MainWindow
-from PyQt5.QtCore import QSize, QCoreApplication, QSettings
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QVBoxLayout, QSizePolicy, QMessageBox, QWidget, \
-    QPushButton, QFileDialog
+from PyQt5.QtCore import QCoreApplication, QSettings
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QFileDialog
 from keras.callbacks import ModelCheckpoint
-from keras.layers import Convolution2D, MaxPooling2D, Dense, Dropout, Activation, Flatten
-from keras.models import Sequential, load_model
-from keras.optimizers import Adam
-from keras.utils import np_utils, to_categorical
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-from scipy.io.wavfile import write
-from sklearn import metrics
+from keras.layers import Dense, Dropout, Activation
+from keras.models import Sequential
+#from keras.optimizers import Adam
+from keras.utils import to_categorical
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, scale
