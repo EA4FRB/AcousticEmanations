@@ -131,3 +131,7 @@ dmypy.json
 # Project specific 
 train/
 saved_models/
+.idea/
+*.dll
+*.exe
+deps-exe/
