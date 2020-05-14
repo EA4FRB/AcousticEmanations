@@ -458,7 +458,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.about(self, "Prediction", outstr)
 
     def about(self):
-        QMessageBox.about(self, "About", APPLICATION_NAME + '\n\n' + COPYRIGHT_DATE + ' ' + ORGANIZATION_NAME)
+        QMessageBox.about(self, "About", APPLICATION_NAME + ' v' +APP_VERSION + '\n\n' + COPYRIGHT_DATE + ' ' + ORGANIZATION_NAME)
 
     def restore_settings(self):
         settings = QSettings()
