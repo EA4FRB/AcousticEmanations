@@ -46,7 +46,6 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QFileDialog
 from keras.callbacks import ModelCheckpoint
 from keras.layers import Dense, Dropout, Activation
 from keras.models import Sequential
-#from keras.optimizers import Adam
 from keras.utils import to_categorical
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
@@ -274,7 +273,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.MplWidgetMatrix.canvas.axes.clear()
         # self.MplWidgetMatrix.canvas.axes.figure(figsize=(8, 6))
-        self.MplWidgetMatrix.canvas.axes.imshow(cm, interpolation='nearest', cmap=cmap)
+        self.MplWidgetMatrix.canvas.axes.imshow(cm, origin='lower', interpolation='nearest', cmap=cmap)
         self.MplWidgetMatrix.canvas.axes.set_title(title)
         #        self.MplWidgetMatrix.canvas.axes.colorbar()
 
