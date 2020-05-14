@@ -31,6 +31,7 @@ ORGANIZATION_NAME = 'Melchor Varela - EA4FRB'
 ORGANIZATION_DOMAIN = 'sark110.com'
 APPLICATION_NAME = 'Acoustic Emanations Tool'
 COPYRIGHT_DATE = "© 2020,"
+APP_VERSION = '0.1'
 
 PATH_TRAIN_DEF = '../train'
 SUBPATH_WAV = '/wav/'
