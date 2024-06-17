@@ -5,4 +5,4 @@ librosa==0.7.2
 pandas==1.0.3
 pyaudio==0.2.11
 PyQt5==5.14.2
-scikit_learn==0.23.0
+scikit_learn==1.5.0
